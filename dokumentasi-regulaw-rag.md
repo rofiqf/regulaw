@@ -479,6 +479,32 @@ Pengujian end-to-end dilakukan secara live (tanpa simulasi) pada 3 Oktober 2026:
 
 Semua kutipan pasal diverifikasi sesuai isi UU 27/2022.
 
+### 7.3 Uji Kualitas Jawaban — 10 Pertanyaan (top-K = 6, Execution ID 32–42)
+
+Ingestion dijalankan ulang (Execution ID 32: 57 chunks → 63 vektor), kemudian 10 pertanyaan uji dieksekusi berurutan pada 3 Oktober 2026 (Execution ID 33–42):
+
+| # | Pertanyaan | Pasal Dirujuk | Evaluasi |
+|---|---|---|---|
+| 1 | Apa yang dimaksud Data Pribadi? | 1, 4 | Benar & lengkap |
+| 2 | Hak-hak subjek data pribadi | 5, 7, 8, 14, 15 | Benar, rinci |
+| 3 | Dasar hukum pemrosesan data | 20 | Benar & lengkap (6 dasar hukum) |
+| 4 | Sanksi administratif pelanggaran | — (Pasal 57 tidak ter-retrieve) | Gagal retrieval |
+| 5 | Sanksi pidana perdagangan data ilegal | 65, 67, 68 | Benar & sangat rinci |
+| 6 | Kewajiban saat kebocoran data | 46, 47, 21 | Benar & lengkap |
+| 7 | Transfer data lintas negara | 56, 2, 55 | Benar + catatan jujur keterbatasan |
+| 8 | Peran lembaga pengawas PDP | 54, 53 (parsial) | Retrieval terbatas |
+| 9 | Syarat consent yang sah | 22, 24, 16, 9, 25 | Benar & rinci |
+| 10 | Contoh data pribadi spesifik | 4 | Benar & lengkap |
+
+**Analisis:** tingkat keberhasilan 8/10 penuh, 1 parsial (Q8), 1 gagal (Q4). Tidak ditemukan halusinasi — pada pertanyaan yang gagal, agent menjawab jujur bahwa korpus/hasil retrieval tidak memuat dasar hukum, sesuai aturan system prompt (grounded generation). Pola kegagalan terletak pada **retrieval** (Pasal 57 tidak masuk top-6), bukan pada LLM. Temuan ini menjadi dasar perbaikan pada §7.4.
+
+### 7.4 Perbaikan: Peningkatan top-K 6 → 10 (Execution ID 43–45)
+
+- Parameter `topK` tool retrieval dinaikkan dari 6 menjadi 10; ingestion diulang (Execution ID 43: 57 chunks → 63 vektor).
+- **Q4 diuji ulang (Execution ID 44): BERHASIL.** Agent menjawab sanksi administratif lengkap dengan sitasi Pasal 57: peringatan tertulis; penghentian sementara seluruh/sebagian aktivitas pemrosesan; perintah penghapusan/pemusnahan data; denda administratif maksimal 2% dari pendapatan/omzet tahunan; dijatuhkan oleh Lembaga Pelindungan Data Pribadi.
+- **Q8 diuji ulang (Execution ID 45): tetap terbatas.** Penyebabnya bukan retrieval, melainkan korpus markdown yang memang tidak memuat rincian tugas Lembaga PDP; agent kembali menjawab jujur sesuai aturan grounded.
+- **Kesimpulan:** peningkatan top-K menutup celah retrieval untuk topik sanksi administratif. Faktor pembatas berikutnya adalah cakupan isi korpus, bukan pipeline RAG.
+
 ---
 
 ## 8. Keterbatasan dan Pekerjaan Lanjutan
@@ -486,7 +512,7 @@ Semua kutipan pasal diverifikasi sesuai isi UU 27/2022.
 1. **Vector store in-memory** — vektor hilang saat instance restart; ingestion harus dijalankan ulang sebelum sesi chat. Untuk produksi, migrasi ke Qdrant atau PGVector diperlukan.
 2. **Cakupan korpus** — baru UU 27/2022; POJK dan SEOJK (sesuai rancangan esai awal) belum ditambahkan.
 3. **Kualitas sumber** — versi awal memakai PDF hasil scan (OCR) yang menyebabkan fragmentasi chunk (mis. Pasal 67 terpotong, Pasal 57 tidak terdeteksi). Masalah ini teratasi setelah corpus diganti ke markdown text-native.
-4. **Top-K retrieval** — saat ini 6; peningkatan ke 10–12 dipertimbangkan untuk pertanyaan lintas-topik (mis. sanksi administratif Pasal 57 yang belum teruji retrieval-nya).
+4. **Cakupan isi korpus** — top-K sudah dinaikkan dari 6 ke 10 dan celah retrieval sanksi administratif (Pasal 57) tertutup (Execution ID 44). Keterbatasan tersisa adalah cakupan korpus: rincian tugas Lembaga PDP (Q8) tidak dimuat dalam file markdown, sehingga jawaban tetap terbatas secara jujur (Execution ID 45).
 5. **Parent-Child Retriever** — belum diimplementasikan (rencana Tahap 2).
 
 ---
