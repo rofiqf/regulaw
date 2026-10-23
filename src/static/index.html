@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReguLaw RAG — Pipeline Tester</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; --ok:#4ade80; --err:#f87171; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:1rem 1.5rem; border-bottom:1px solid #334155; display:flex; flex-wrap:wrap; gap:.5rem; align-items:baseline; }
+  h1 { font-size:1.2rem; margin:0; }
+  h2 { font-size:1rem; margin:0 0 .75rem; color:var(--accent); }
+  h3 { font-size:.9rem; margin:1rem 0 .4rem; color:var(--muted); }
+  .badge { font-size:.75rem; color:var(--muted); font-family:ui-monospace,monospace; }
+  main { max-width:960px; margin:0 auto; padding:1.25rem; display:grid; gap:1rem; }
+  .card { background:var(--card); border:1px solid #334155; border-radius:.6rem; padding:1rem 1.25rem; }
+  select, input[type=file], textarea { width:100%; background:#0b1220; color:var(--text); border:1px solid #334155; border-radius:.4rem; padding:.5rem; font-size:.85rem; }
+  textarea { resize:vertical; font-family:inherit; }
+  .row { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-top:.5rem; }
+  button { background:var(--accent); color:#082f49; border:0; border-radius:.4rem; padding:.5rem 1rem; font-weight:600; cursor:pointer; font-size:.85rem; }
+  button.secondary { background:#475569; color:var(--text); }
+  button:disabled { opacity:.5; cursor:wait; }
+  #indexStatus, #queryMeta { font-size:.8rem; color:var(--muted); margin-top:.5rem; font-family:ui-monospace,monospace; }
+  .answer { background:#0b1220; border:1px solid #334155; border-radius:.4rem; padding:.75rem; white-space:pre-wrap; font-size:.9rem; min-height:3rem; }
+  details { background:#0b1220; border:1px solid #334155; border-radius:.4rem; margin-top:.4rem; }
+  summary { padding:.5rem .75rem; cursor:pointer; font-size:.8rem; color:var(--muted); font-family:ui-monospace,monospace; }
+  .chunk-body { padding:0 .75rem .75rem; white-space:pre-wrap; font-size:.8rem; color:var(--text); }
+  .ok { color:var(--ok); } .err { color:var(--err); }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚖️ ReguLaw RAG — Pipeline Tester</h1>
+  <span class="badge" id="info">memuat konfigurasi…</span>
+</header>
+<main>
+  <section class="card">
+    <h2>1. Index Dokumen</h2>
+    <div class="row">
+      <select id="pdfSelect" style="flex:1;min-width:220px"></select>
+      <button id="btnIndex" type="button">Index PDF Terpilih</button>
+    </div>
+    <div class="row">
+      <input type="file" id="pdfUpload" accept="application/pdf" style="flex:1;min-width:220px">
+      <button id="btnUpload" type="button" class="secondary">Upload &amp; Index</button>
+    </div>
+    <div id="indexStatus">—</div>
+  </section>
+
+  <section class="card">
+    <h2>2. Uji Retrieval + Generation</h2>
+    <textarea id="question" rows="3" placeholder="Tulis pertanyaan hukum, mis.: Apa sanksi pidana bagi pihak yang menyalahgunakan data pribadi menurut UU PDP?"></textarea>
+    <div class="row">
+      <button id="btnAsk" type="button">Tanya</button>
+      <button id="btnGap" type="button" class="secondary">Jalankan Ekstraksi Gap Matrix</button>
+    </div>
+    <div id="queryMeta">—</div>
+    <h3>Jawaban</h3>
+    <div class="answer" id="answer">—</div>
+    <h3>Chunk Terretrieval (top-k)</h3>
+    <div id="chunks"><span class="badge">belum ada query</span></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function loadInfo() {
+  const r = await fetch("/api/info");
+  const d = await r.json();
+  $("info").textContent =
+    `provider=${d.provider} | model=${d.model} | embedding=${d.embedding_model.split("/")[1]} ` +
+    `| chunk=${d.chunk_size}/${d.chunk_overlap} | top-k=${d.top_k}` +
+    (d.indexed_pdf ? ` | terindex: ${d.indexed_pdf} (${d.chunk_count} chunks)` : "");
+}
+
+async function loadPapers() {
+  const r = await fetch("/api/papers");
+  const d = await r.json();
+  $("pdfSelect").innerHTML = d.papers.length
+    ? d.papers.map(p => `<option value="${p}">${p}</option>`).join("")
+    : `<option value="">(papers/ kosong)</option>`;
+}
+
+async function doIndex(body) {
+  $("btnIndex").disabled = $("btnUpload").disabled = true;
+  $("indexStatus").textContent = "mengindex… (embedding lokal, bisa memakan waktu)";
+  try {
+    const r = await fetch("/api/index", { method: "POST", body });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "index gagal");
+    $("indexStatus").innerHTML =
+      `<span class="ok">✓</span> ${d.pdf}: ${d.pages} halaman → ${d.chunks} chunks dalam ${d.seconds}s`;
+    await loadInfo(); await loadPapers();
+  } catch (e) {
+    $("indexStatus").innerHTML = `<span class="err">✗ ${e.message}</span>`;
+  } finally {
+    $("btnIndex").disabled = $("btnUpload").disabled = false;
+  }
+}
+
+$("btnIndex").onclick = () => {
+  const f = $("pdfSelect").value;
+  if (f) doIndex(new URLSearchParams({ filename: f }));
+};
+$("btnUpload").onclick = () => {
+  const f = $("pdfUpload").files[0];
+  if (!f) { $("indexStatus").innerHTML = `<span class="err">✗ pilih file PDF dulu</span>`; return; }
+  const fd = new FormData();
+  fd.append("file", f);
+  doIndex(fd);
+};
+
+function renderChunks(chunks) {
+  $("chunks").innerHTML = (chunks || []).map(c =>
+    `<details><summary>#${c.rank} · halaman ${c.page ?? "-"} · ${c.content.length} karakter</summary>` +
+    `<div class="chunk-body"></div></details>`
+  ).join("") || `<span class="badge">tidak ada chunk</span>`;
+  (chunks || []).forEach((c, i) => {
+    document.querySelectorAll("#chunks .chunk-body")[i].textContent = c.content;
+  });
+}
+
+async function ask(url, payload, label) {
+  $("btnAsk").disabled = $("btnGap").disabled = true;
+  $("queryMeta").textContent = `${label}…`;
+  $("answer").textContent = "…";
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "query gagal");
+    $("answer").textContent = d.answer ?? d.result ?? "—";
+    $("queryMeta").textContent =
+      `sumber: ${d.pdf} · ${d.seconds}s` + (d.question ? ` · Q: ${d.question}` : ` · ${d.query}`);
+    renderChunks(d.retrieved);
+  } catch (e) {
+    $("answer").textContent = "—";
+    $("queryMeta").innerHTML = `<span class="err">✗ ${e.message}</span>`;
+  } finally {
+    $("btnAsk").disabled = $("btnGap").disabled = false;
+  }
+}
+
+$("btnAsk").onclick = () => ask("/api/query", { question: $("question").value }, "retrieval + generation");
+$("btnGap").onclick = () => ask("/api/gap_matrix", {}, "ekstraksi gap matrix");
+
+loadInfo(); loadPapers();
+</script>
+</body>
+</html>
