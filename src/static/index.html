@@ -70,6 +70,12 @@
     <textarea id="question" rows="3" placeholder="Tulis pertanyaan hukum, mis.: Apa sanksi pidana bagi pihak yang menyalahgunakan data pribadi menurut UU PDP?"></textarea>
     <div class="row">
       <button id="btnAsk" type="button">Tanya</button>
+      <label class="badge" for="topK">top-k:</label>
+      <select id="topK" style="width:auto">
+        <option value="5" selected>5</option>
+        <option value="10">10</option>
+        <option value="15">15</option>
+      </select>
       <button id="btnGap" type="button" class="secondary">Jalankan Ekstraksi Gap Matrix</button>
     </div>
     <div id="queryMeta">—</div>
@@ -152,7 +158,7 @@ async function ask(url, payload, label) {
     if (!r.ok) throw new Error(d.error || "query gagal");
     $("answer").textContent = d.answer ?? d.result ?? "—";
     $("queryMeta").textContent =
-      `sumber: ${d.pdf} · ${d.seconds}s` + (d.question ? ` · Q: ${d.question}` : ` · ${d.query}`);
+      `sumber: ${d.pdf} · top-k=${d.k ?? "-"} · ${d.seconds}s` + (d.question ? ` · Q: ${d.question}` : ` · ${d.query}`);
     renderChunks(d.retrieved);
   } catch (e) {
     $("answer").textContent = "—";
@@ -162,12 +168,12 @@ async function ask(url, payload, label) {
   }
 }
 
-$("btnAsk").onclick = () => ask("/api/query", { question: $("question").value }, "retrieval + generation");
+$("btnAsk").onclick = () => ask("/api/query", { question: $("question").value, k: Number($("topK").value) }, "retrieval + generation");
 $("btnGap").onclick = () => ask("/api/gap_matrix", {}, "ekstraksi gap matrix");
 
 const DEFAULT_MODELS = {
   lmstudio: "qwen2.5-3b-instruct",
-  gemini: "gemini-2.5-flash",
+  gemini: "gemini-3.8-flash",
   groq: "llama-3.3-70b-versatile",
 };
 

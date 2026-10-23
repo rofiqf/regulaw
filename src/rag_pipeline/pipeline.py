@@ -7,7 +7,7 @@ from .chunking import split_documents
 from .document_processing import load_pdf
 from .embedding import get_embeddings
 from .generation import GAP_MATRIX_QUERY, build_llm, generate
-from .retrieval import create_retriever, retrieve_context
+from .retrieval import create_hybrid_retriever, retrieve_context
 from .self_healing import heal
 from .vector_store import build_index
 
@@ -28,7 +28,7 @@ class GapMatrixAgent:
         pages = load_pdf(pdf_path)
         chunks = split_documents(pages)
         vector_store = build_index(chunks, self.embeddings)
-        retriever = create_retriever(vector_store)
+        retriever = create_hybrid_retriever(chunks, vector_store)
 
         context = retrieve_context(retriever, GAP_MATRIX_QUERY)
         summary = generate(self.llm, context)

@@ -10,7 +10,7 @@ from rag_pipeline.chunking import split_documents
 from rag_pipeline.document_processing import load_pdf
 from rag_pipeline.embedding import get_embeddings
 from rag_pipeline.generation import GAP_MATRIX_QUERY, build_llm, generate
-from rag_pipeline.retrieval import create_retriever
+from rag_pipeline.retrieval import create_hybrid_retriever
 from rag_pipeline.vector_store import build_index
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +23,8 @@ STATE = {
     "embeddings": None,
     "llm": None,
     "pdf": None,
+    "chunks": None,
+    "vector_store": None,
     "retriever": None,
     "chunk_count": 0,
     "indexed_at": None,
@@ -164,7 +166,9 @@ def index_pdf():
     vector_store = build_index(chunks, get_embeddings_lazy())
     STATE.update({
         "pdf": filename,
-        "retriever": create_retriever(vector_store),
+        "chunks": chunks,
+        "vector_store": vector_store,
+        "retriever": create_hybrid_retriever(chunks, vector_store),
         "chunk_count": len(chunks),
         "indexed_at": time.strftime("%H:%M:%S"),
     })
@@ -198,9 +202,14 @@ def query():
     question = (data.get("question") or "").strip()
     if not question:
         return jsonify({"error": "Pertanyaan kosong."}), 400
+    try:
+        k = int(data.get("k") or config.TOP_K)
+    except (TypeError, ValueError):
+        k = config.TOP_K
 
     started = time.time()
-    docs = STATE["retriever"].invoke(question)
+    retriever = create_hybrid_retriever(STATE["chunks"], STATE["vector_store"], k=k)
+    docs = retriever.invoke(question)
     context = "\n\n".join(doc.page_content for doc in docs)
     prompt = f"""
     Jawab pertanyaan berdasarkan KONTEKS berikut. Jawab hanya menggunakan informasi
@@ -212,11 +221,15 @@ def query():
 
     PERTANYAAN: {question}
     """
-    answer = get_llm_lazy().invoke(prompt).content
+    try:
+        answer = get_llm_lazy().invoke(prompt).content
+    except Exception as exc:
+        return jsonify({"error": f"LLM ({config.LLM_PROVIDER}) gagal: {exc}"}), 502
     return jsonify({
         "pdf": STATE["pdf"],
         "question": question,
         "answer": answer,
+        "k": k,
         "seconds": round(time.time() - started, 2),
         "retrieved": docs_to_json(docs),
     })
@@ -231,7 +244,10 @@ def gap_matrix():
     started = time.time()
     docs = STATE["retriever"].invoke(GAP_MATRIX_QUERY)
     context = "\n\n".join(doc.page_content for doc in docs)
-    result = generate(get_llm_lazy(), context)
+    try:
+        result = generate(get_llm_lazy(), context)
+    except Exception as exc:
+        return jsonify({"error": f"LLM ({config.LLM_PROVIDER}) gagal: {exc}"}), 502
     return jsonify({
         "pdf": STATE["pdf"],
         "query": GAP_MATRIX_QUERY,
