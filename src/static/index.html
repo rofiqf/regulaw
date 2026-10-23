@@ -36,6 +36,23 @@
 </header>
 <main>
   <section class="card">
+    <h2>Pengaturan LLM</h2>
+    <div class="row">
+      <select id="setProvider" style="flex:1;min-width:160px">
+        <option value="lmstudio">LM Studio (lokal)</option>
+        <option value="gemini">Gemini (Google)</option>
+        <option value="groq">Groq</option>
+      </select>
+      <input id="setModel" placeholder="model" style="flex:2;min-width:200px">
+    </div>
+    <div class="row">
+      <input id="setKey" type="password" placeholder="API key (kosongkan = tidak diubah)" style="flex:1;min-width:220px">
+      <button id="btnSave" type="button">Simpan</button>
+    </div>
+    <div id="setStatus">—</div>
+  </section>
+
+  <section class="card">
     <h2>1. Index Dokumen</h2>
     <div class="row">
       <select id="pdfSelect" style="flex:1;min-width:220px"></select>
@@ -148,7 +165,56 @@ async function ask(url, payload, label) {
 $("btnAsk").onclick = () => ask("/api/query", { question: $("question").value }, "retrieval + generation");
 $("btnGap").onclick = () => ask("/api/gap_matrix", {}, "ekstraksi gap matrix");
 
-loadInfo(); loadPapers();
+const DEFAULT_MODELS = {
+  lmstudio: "qwen2.5-3b-instruct",
+  gemini: "gemini-2.5-flash",
+  groq: "llama-3.3-70b-versatile",
+};
+
+async function loadSettings() {
+  const r = await fetch("/api/settings");
+  const d = await r.json();
+  $("setProvider").value = d.provider;
+  $("setModel").value = d.model || DEFAULT_MODELS[d.provider] || "";
+  $("setKey").value = "";
+  $("setKey").placeholder = d.api_key_masked
+    ? `API key tersimpan: ${d.api_key_masked} (kosongkan = tidak diubah)`
+    : "API key (kosongkan = tidak diubah)";
+  $("setStatus").textContent = `provider aktif: ${d.provider}`;
+}
+
+$("setProvider").onchange = () => {
+  $("setModel").value = DEFAULT_MODELS[$("setProvider").value] || "";
+};
+
+$("btnSave").onclick = async () => {
+  $("btnSave").disabled = true;
+  $("setStatus").textContent = "menyimpan…";
+  try {
+    const r = await fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: $("setProvider").value,
+        model: $("setModel").value.trim(),
+        api_key: $("setKey").value.trim(),
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "simpan gagal");
+    $("setKey").value = "";
+    $("setStatus").innerHTML =
+      `<span class="ok">✓ tersimpan</span> — provider: ${d.provider}, model: ${d.model}` +
+      (d.api_key_masked ? `, key: ${d.api_key_masked}` : "");
+    await loadInfo();
+  } catch (e) {
+    $("setStatus").innerHTML = `<span class="err">✗ ${e.message}</span>`;
+  } finally {
+    $("btnSave").disabled = false;
+  }
+};
+
+loadInfo(); loadPapers(); loadSettings();
 </script>
 </body>
 </html>

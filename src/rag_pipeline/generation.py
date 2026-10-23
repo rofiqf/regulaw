@@ -5,6 +5,13 @@ GAP_MATRIX_QUERY = "Ekstrak Problem, Metode, Dataset, Temuan, Keterbatasan, dan 
 
 
 def build_llm():
+    if config.LLM_PROVIDER == "gemini":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(
+            google_api_key=config.GEMINI_API_KEY,
+            model=config.GEMINI_MODEL,
+            temperature=0.1
+        )
     if config.LLM_PROVIDER == "groq":
         from langchain_groq import ChatGroq
         return ChatGroq(
