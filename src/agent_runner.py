@@ -1,16 +1,35 @@
 """
 AI Agent untuk Otomasi Ekstraksi Literature GAP Matrix
-Infrastruktur: sentence-transformers (Lokal) + Groq Cloud API
+Infrastruktur: sentence-transformers (Lokal) + LLM (LM Studio lokal / Groq API)
 """
 import os
 import glob
+from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_groq import ChatGroq
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+load_dotenv()
+
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "lmstudio").lower()
+
+
+def build_llm():
+    if LLM_PROVIDER == "groq":
+        from langchain_groq import ChatGroq
+        return ChatGroq(
+            groq_api_key=os.getenv("GROQ_API_KEY"),
+            model_name=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            temperature=0.1
+        )
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI(
+        base_url=os.getenv("LM_STUDIO_BASE_URL", "http://192.168.200.6:1234/v1"),
+        api_key=os.getenv("LM_STUDIO_API_KEY", "lm-studio"),
+        model=os.getenv("LM_STUDIO_MODEL", "qwen2.5-3b-instruct"),
+        temperature=0.1
+    )
 
 
 class GapMatrixAgent:
@@ -22,11 +41,8 @@ class GapMatrixAgent:
         self.embedding = HuggingFaceEmbeddings(
             model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
         )
-        self.llm = ChatGroq(
-            groq_api_key=GROQ_API_KEY,
-            model_name="llama-3.3-70b-versatile",
-            temperature=0.1
-        )
+        print(f"[Agent] Menggunakan LLM provider: {LLM_PROVIDER}")
+        self.llm = build_llm()
 
     def process_paper(self, pdf_path):
         filename = os.path.basename(pdf_path)
@@ -102,5 +118,8 @@ class GapMatrixAgent:
 
 
 if __name__ == "__main__":
-    agent = GapMatrixAgent()
+    agent = GapMatrixAgent(
+        papers_dir=os.getenv("PAPERS_DIR", "/app/papers"),
+        output_dir=os.getenv("OUTPUT_DIR", "/app/output"),
+    )
     agent.run()
