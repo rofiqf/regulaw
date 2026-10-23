@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  rag-agent:
+    build: .
+    container_name: regulaw_rag_agent
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - HF_HOME=/app/cache/huggingface
+    volumes:
+      - ./papers:/app/papers
+      - ./output:/app/output
+      - ./model_cache:/app/cache
+    restart: unless-stopped
